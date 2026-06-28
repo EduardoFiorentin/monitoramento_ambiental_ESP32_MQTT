@@ -1,0 +1,5 @@
+**/.env
+**/credentials
+**/passwd
+**/acl
+**/mosquitto.db
