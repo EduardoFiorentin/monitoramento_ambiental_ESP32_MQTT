@@ -13,6 +13,7 @@ void MQTTController::begin() {
   WiFi.mode(WIFI_STA);
   
   // Configura o cliente MQTT
+  _mqttClient.setBufferSize(MAX_PUB_BUFFER_SIZE);    // aumenta tamanho máximo do buffer de publicação
   _mqttClient.setClient(_espClient);
   _mqttClient.setServer(_config.mqttBroker, _config.mqttPort);
   _mqttClient.setCallback(MQTTController::_mqttCallbackWrapper);
@@ -125,7 +126,7 @@ void MQTTController::update() {
       // Se o broker cair ou desconectar o cliente
       if (!_mqttClient.connected()) {
         Serial.println("[MQTT] Conexão com o broker perdida!");
-        _connectionState = EConnectionStatus::,;
+        _connectionState = EConnectionStatus::BROKER_CONNECTING;
         if (_onClientDisconnectCallback) _onClientDisconnectCallback();
         break;
       }
@@ -190,7 +191,7 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
   }
 }
 
-// ======== MÉTODOS DE ENVIO (PUBLICAÇÕES) ========
+// Métodos de publcação ======================================================
 
 void MQTTController::sendAmbientData(float temperature, float humidity) {
   if (_connectionState == EConnectionStatus::BROKER_CONNECTED) {

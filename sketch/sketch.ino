@@ -3,9 +3,11 @@
 #include "PulldownButton.h"
 #include "RGBLed.h"
 #include "SwitchPullDown.h"
-#include "MQTTController.h" // Substituído o BLE pelo MQTT
+#include "MQTTController.h"
 #include "Timer.h"
 #include "SimpleLed.h"
+#include "env.h"
+#include "HistoryBuffer.h"
 
 #define   DHT_SENSOR_PIN    18
 #define   DHT_SENSOR_TYPE   DHT_TYPE_22
@@ -14,43 +16,45 @@
 #define   WIFI_DATA_TRANSMISSION_INTERVAL                 5000
 #define   WIFI_RSSI_TRANSMISSION_INTERVAL                 5000
 
-#define   PIN_BUTTON_1      26
-#define   PIN_BUTTON_2      27
-#define   PIN_SW_1          34
-#define   PIN_SW_2          35
-#define   PIN_SW_3          32
-#define   PIN_SW_4          33
-#define   PIN_LED_1         2
-#define   PIN_LED_2         15
-#define   PIN_LED_RGB_R     17
-#define   PIN_LED_RGB_G     16
-#define   PIN_LED_RGB_B     4
+#define   HISTORY_SEND_INTERVAL                           60000
 
-#define   MSG_TEMP_C        "Temp (C): "      // lcd screen 1 
-#define   MSG_TEMP_F        "Temp (F): "      // lcd screen 1
-#define   MSG_HUM           "Hum (%): "       // lcd screen 1
-#define   MSG_TEMP_MIN      "Temp min: "      // lcd screen 2
-#define   MSG_TEMP_MAX      "Temp max: "      // lcd screen 2
-#define   MSG_HUM_MIN       "Hum min: "       // lcd screen 3
-#define   MSG_HUM_MAX       "Hum max: "       // lcd screen 3
+#define   PIN_BUTTON_1          26
+#define   PIN_BUTTON_2          27
+#define   PIN_SW_1              34
+#define   PIN_SW_2              35
+#define   PIN_SW_3              32
+#define   PIN_SW_4              33
+#define   PIN_LED_1             2
+#define   PIN_LED_2             15
+#define   PIN_LED_RGB_R         17
+#define   PIN_LED_RGB_G         16
+#define   PIN_LED_RGB_B         4
 
-// Novas mensagens para refletir a rede Wi-Fi/MQTT
-#define   MSG_NET_STTS      "Rede Status: "   // lcd screen 5
-#define   MSG_NET_OFF       "Desconectado"
-#define   MSG_NET_WIFI      "Wi-Fi Conectado"
-#define   MSG_NET_MQTT      "MQTT Conectado"
+#define   MSG_TEMP_C            "Temp (C): "      // lcd screen 1 
+#define   MSG_TEMP_F            "Temp (F): "      // lcd screen 1
+#define   MSG_HUM               "Hum (%): "       // lcd screen 1
+#define   MSG_TEMP_MIN          "Temp min: "      // lcd screen 2
+#define   MSG_TEMP_MAX          "Temp max: "      // lcd screen 2
+#define   MSG_HUM_MIN           "Hum min: "       // lcd screen 3
+#define   MSG_HUM_MAX           "Hum max: "       // lcd screen 3
+#define   MSG_NET_STTS          "Rede Status: "   // lcd screen 5
+#define   MSG_NET_OFF           "Desconectado"
+#define   MSG_NET_WIFI          "Wi-Fi Conectado"
+#define   MSG_NET_MQTT          "MQTT Conectado"
+#define   MSG_NET_NOT_STARTED   "Erro de Instância"
 
 #define CELSIUS_TO_FAHRENHEIT(c) (((c) * 9.0) / 5.0 + 32.0)
 
-// #define DHT_READ_MOCK   // Comentar para usar sensor real nas leituras 
+#define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
+// #define IS_WOKWI     // comentar para habilitar uso do wi-fi real
 
 void update_min_max();
 void update_lcd_messages();
 void envDataTransmissionCallback();
 void rssiTransmissionCallback();
+void onHistoryReadyToSendCallback();
 
-
-// ENUM =============================================================
+// enums =============================================================
 // Atualizado para refletir o modo de rede
 enum LCDStateEnum {
   SCREEN_1_TEMP_C,      // temp graus C + Hum %
@@ -66,17 +70,18 @@ MQTTController        *mqttController = nullptr; // Ponteiro para a nova classe 
 RGBLed                rgbLed(PIN_LED_RGB_R, PIN_LED_RGB_G, PIN_LED_RGB_B);
 SimpleLed             led1(PIN_LED_1), led2(PIN_LED_2);
 LiquidCrystal_I2C     lcd(0x27, 16, 2);
+HistoryBuffer         historyBuffer;
 
 // Inputs
 PulldownButton 
-  btn1(PIN_BUTTON_1),   // alternância manual das telas do LCD 
+  btn1(PIN_BUTTON_1),   // alternância manual das telas do ldc 
   btn2(PIN_BUTTON_2);   // reset minimos e máximos
 
 SwitchPullDown 
-  sw1(PIN_SW_1),        // Bloqueia/Libera o controle dos LEDs remoto
-  sw2(PIN_SW_2),        // Liga/Desliga led localmente 
-  sw3(PIN_SW_3),        // Liga/Desliga led localmente 
-  sw4(PIN_SW_4);        // Define a visualização do gráfico no APP entre C e F
+  sw1(PIN_SW_1),        // bloqueia/libera o controle dos leds remoto
+  sw2(PIN_SW_2),        // liga/desliga led localmente 
+  sw3(PIN_SW_3),        // liga/desliga led localmente 
+  sw4(PIN_SW_4);        // define a visualização do gráfico no app entre C e F
 
 
 // State variables ===================================================================
@@ -84,7 +89,9 @@ LCDStateEnum lcdState = SCREEN_1_TEMP_C;
 
 Timer 
   envDataTransmitionTimer (WIFI_DATA_TRANSMISSION_INTERVAL, envDataTransmissionCallback), 
-  rssiTransmitionTimer    (WIFI_RSSI_TRANSMISSION_INTERVAL, rssiTransmissionCallback);
+  rssiTransmitionTimer    (WIFI_RSSI_TRANSMISSION_INTERVAL, rssiTransmissionCallback),
+  historyTimer            (HISTORY_SEND_INTERVAL, onHistoryReadyToSendCallback);
+
 
 // Value variables ================================================================
 float temp = 0.0, minTemp = 40.0, maxTemp = 0.0;
@@ -104,7 +111,7 @@ void processAppLedsCommandCallback(bool appLed1, bool appLed2, bool appReset) {
   if (appLed2) led2.setOn(); else led2.setOff();
 
   if (appReset) {
-    Serial.println("Reset dos valores min/max acionado pelo MQTT.");
+    Serial.println("Reset dos valores min/max MQTT.");
     setup_min_max();
     update_lcd_messages();
   }
@@ -127,7 +134,7 @@ void rssiTransmissionCallback() {
   }
 }
 
-// conexão / desconexão com o Broker
+// conexão e desconexão do broker
 void onDeviceConnectedCallback() {
   if (mqttController != nullptr) {
     Serial.println("[MQTT] Callback de conexão chamada!");
@@ -142,8 +149,17 @@ void onDeviceDisconnectedCallback() {
   update_lcd_messages();
 }
 
+void onHistoryReadyToSendCallback() {
+  Serial.println("[MQTT] Callback mandando historico");
+  if (mqttController != nullptr) {
+    String payload = historyBuffer.getHistoryJSON();
+    Serial.println(payload.c_str());
+    mqttController->sendHistoryData(payload);
+  }
+}
 
-// SETUP METHODS ================================================================
+
+// METODOS DE SETUP ================================================================
 void setup_lcd() {
   lcd.init();
   lcd.backlight();
@@ -157,16 +173,16 @@ void setup_min_max() {
 }
 
 void setup_mqtt() {
-  // ATENÇÃO: Substitua os dados de Wi-Fi pelos da sua rede local
+  #ifndef IS_WOKWI
   MQTTConfig config = {
-    "Cool Guy",       // wifiSSID
-    "09092014",      // wifiPassword
-    "192.168.0.106",       // mqttBroker (O IP do Ubuntu que encontramos)
-    1883,                  // mqttPort
-    "admin",               // mqttUser (Se criou o user esp32 no broker, mude aqui)
-    "admin",           // mqttPassword
-    "uffs/dev/",           // topicPrefix
-    "ESP32_Client"        // clientId
+    WIFI_SSID,
+    WIFI_PASS,
+    BROKER_ADDRS,
+    MQTT_PORT,
+    MQTT_USER_LOGIN,
+    MQTT_USER_PASS,
+    MQTT_TOPIC_PREFIX,
+    MQTT_ESP_CLIENT_ID
   };
 
   mqttController = new MQTTController(config);
@@ -176,9 +192,11 @@ void setup_mqtt() {
     mqttController->setRgbCallback(processAppRgbCommandCallback);
     mqttController->setClientConnectCallback(onDeviceConnectedCallback);
     mqttController->setClientDisconnectCallback(onDeviceDisconnectedCallback);
-    
-    mqttController->begin(); // Inicia a configuração do Wi-Fi/MQTT
+    mqttController->begin();
   }
+  #else 
+  Serial.println("[MQTT] Wokwi detectado - Wi-Fi e MQTT não iniciados")
+  #endif 
 }
 
 void setup_dht() {
@@ -201,24 +219,23 @@ void setup_io() {
   led2.begin();
 }
 
-// Obriga as caracteristicas a assumirem um valor inicial válido
+// Obriga as caracteristicas a assumirem um valor inicial valido
 void setup_initial_hardware_state() {
   isLedsBlockedToApp = sw1.isOn();
 
-  if (isLedsBlockedToApp) {
-    if (sw2.isOn()) led1.setOn(); else led1.setOff();
-    if (sw3.isOn()) led2.setOn(); else led2.setOff();
-  }
+  // (TODO testar) removido para iniciar refletindo estado das chaves
+  // if (isLedsBlockedToApp) {
+  // }
+  if (sw2.isOn()) led1.setOn(); else led1.setOff();
+  if (sw3.isOn()) led2.setOn(); else led2.setOff();
 
-  // A sincronização de facto só ocorrerá quando o MQTT se conectar via callback,
-  // mas deixamos aqui o gatilho caso o boot demore.
   if (mqttController != nullptr && mqttController->isMQTTConnected()) {
     mqttController->sendConfigData(isLedsBlockedToApp, sw4.isOn());
     mqttController->sendLocalLedsState(led1.isOn(), led2.isOn(), false);
   }
 }
 
-// LCD CONTROLL =================================================================
+// CONTROLES LCD =================================================================
 void write_lcd_row_1(String text) {
   lcd.setCursor(0, 0);
   lcd.print("                ");
@@ -252,7 +269,7 @@ void update_lcd_messages() {
     write_lcd_row_2(msgHum);
   }
   else if ( lcdState == SCREEN_2_TEMP_F) {
-    String msgTempF= MSG_TEMP_F + String(CELSIUS_TO_FAHRENHEIT(temp));
+    String msgTempF = MSG_TEMP_F + String(CELSIUS_TO_FAHRENHEIT(temp));
     String msgHum= MSG_HUM + String(hum);
     write_lcd_row_1(msgTempF);
     write_lcd_row_2(msgHum);
@@ -272,21 +289,18 @@ void update_lcd_messages() {
   else if ( lcdState == SCREEN_5_NET) {
     write_lcd_row_1(MSG_NET_STTS);
     if (mqttController != nullptr) {
-      // Prioridade máxima: ver se alcançámos a nuvem
-      if (mqttController->isMQTTConnected()) {
+      if (mqttController->isMQTTConnected()) {    // broker alcançado
         write_lcd_row_2(MSG_NET_MQTT);
       } 
-      // Nível intermédio: Roteador alcançado, sem internet/broker
-      else if (mqttController->isWiFiConnected()) {
+      else if (mqttController->isWiFiConnected()) { // rede wi-fi alcançada
         write_lcd_row_2(MSG_NET_WIFI);
       } 
-      // Nível zero: Sem rede
       else {
-        write_lcd_row_2(MSG_NET_OFF);
+        write_lcd_row_2(MSG_NET_OFF);   // tudo quebrado 
       }
     } 
     else {
-      write_lcd_row_2("Erro de Instância");
+      write_lcd_row_2(MSG_NET_NOT_STARTED);
     }
   }
 }
@@ -355,7 +369,8 @@ void update_hardware_state() {
     }
   }
 
-  if (sw2.hasChanged() && isLedsBlockedToApp) {
+  //  && isLedsBlockedToApp
+  if (sw2.hasChanged()) {
     if (sw2.isOn() && !led1.isOn()) led1.setOn();
     if (!sw2.isOn() && led1.isOn()) led1.setOff();
 
@@ -364,7 +379,8 @@ void update_hardware_state() {
     }
   }
 
-  if (sw3.hasChanged() && isLedsBlockedToApp) {
+  //  && isLedsBlockedToApp
+  if (sw3.hasChanged()) {
     if (sw3.isOn() && !led2.isOn()) led2.setOn();
     if (!sw3.isOn() && led2.isOn()) led2.setOff();
     
@@ -390,25 +406,29 @@ void update_io() {
 }
 
 void update_dht_measures() {
-  measure_environment(&temp, &hum);
+  if (measure_environment(&temp, &hum)) {
+    historyBuffer.enqueue(temp, hum);     // TODO Ver onde fica melhor esta chamada
+  }
+  
 }
 
 void update_min_max() {
-  if (temp < minTemp) minTemp = temp;
-  if (temp > maxTemp) maxTemp = temp;
-  if (hum < minHum)   minHum = hum;
-  if (hum > maxHum)   maxHum = hum;
+  if (temp < minTemp)   minTemp = temp;
+  if (temp > maxTemp)   maxTemp = temp;
+  if (hum < minHum)     minHum = hum;
+  if (hum > maxHum)     maxHum = hum;
 }
 
 void setup() {
   Serial.begin(115200);
   setup_lcd();
-  setup_mqtt(); // Substituiu o BLE
+  setup_mqtt();
   setup_io();
   setup_dht();
   update_lcd_messages();
   envDataTransmitionTimer.start();
   rssiTransmitionTimer.start();
+  historyTimer.start();
 
   setup_initial_hardware_state();
 }
@@ -427,4 +447,5 @@ void loop() {
   // timers
   envDataTransmitionTimer.update();
   rssiTransmitionTimer.update();
+  historyTimer.update();
 }

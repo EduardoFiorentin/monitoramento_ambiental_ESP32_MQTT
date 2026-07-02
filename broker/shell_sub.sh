@@ -1,1 +1,1 @@
-docker exec -it mqtt5 mosquitto_sub -h localhost -t "uffs/dev/temperatura/celsius" -v
+docker exec -it mqtt5 mosquitto_sub -h localhost -t "#" -v

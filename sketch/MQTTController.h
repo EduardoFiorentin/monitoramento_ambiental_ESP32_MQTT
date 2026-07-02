@@ -18,7 +18,9 @@
 #define TOPIC_SUFFIX_LOCK_STATE   "controle/bloqueio"
 #define TOPIC_SUFFIX_RESET_CMD    "controle/reset"
 
-// Struct limpa para injeção de dependências
+#define MAX_PUB_BUFFER_SIZE       1024
+
+// struct injeção de dependências
 struct MQTTConfig {
   const char* wifiSSID;
   const char* wifiPassword;
@@ -39,8 +41,8 @@ enum class EConnectionStatus {
   DISCONNECTED,
   WIFI_CONNECTING,
   WIFI_CONNECTED,
-  BROKER_CONNECTING, // Alterado
-  BROKER_CONNECTED   // Alterado
+  BROKER_CONNECTING, 
+  BROKER_CONNECTED   
 };
 
 

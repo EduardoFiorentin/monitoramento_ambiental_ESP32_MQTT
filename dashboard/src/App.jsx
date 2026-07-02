@@ -4,14 +4,15 @@ import LineChart from './components/LineChart';
 
 
 const MQTT_OPTIONS = {
-  host: "192.168.0.106",
+  host: "192.168.0.106",   // casa
+  // host: "10.89.235.1",      // g6
   port: "9001",
   username: 'admin',
   password: 'admin',
   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8),
   
 };
-const PREFIX = 'uffs/dev/';
+const PREFIX = 'uffs/EduardoFioretin/dev/';
 
 const MAX_POINTS_AMBIENT = 30; // Aprox 2.5 minutos de histórico
 const MAX_POINTS_RSSI = 15;    // Aprox 75 segundos de histórico (cobre a exigência de 60s)
@@ -75,19 +76,19 @@ function App() {
       switch (topic) {
         case `${PREFIX}temperatura/celsius`:
           setTelemetry(prev => ({ ...prev, temp: payload }));
-          setHistory(prev => {
-            const newLabels = [...prev.timeLabels, now].slice(-MAX_POINTS_AMBIENT);
-            const newTemp = [...prev.tempData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
-            return { ...prev, timeLabels: newLabels, tempData: newTemp };
-          });
+          // setHistory(prev => {
+          //   const newLabels = [...prev.timeLabels, now].slice(-MAX_POINTS_AMBIENT);
+          //   const newTemp = [...prev.tempData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
+          //   return { ...prev, timeLabels: newLabels, tempData: newTemp };
+          // });
           break;
           
         case `${PREFIX}umidade`:
           setTelemetry(prev => ({ ...prev, hum: payload }));
-          setHistory(prev => {
-            const newHum = [...prev.humData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
-            return { ...prev, humData: newHum };
-          });
+          // setHistory(prev => {
+          //   const newHum = [...prev.humData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
+          //   return { ...prev, humData: newHum };
+          // });
           break;
           
         case `${PREFIX}rssi`:
@@ -98,8 +99,32 @@ function App() {
             return { timeLabels: newLabels, rssiData: newRssi };
           });
           break;
+        
+        case `${PREFIX}historico`:
+          try {
+            // 1. Transforma o texto que chegou do ESP32 num objeto Javascript de verdade
+            const parsedData = JSON.parse(payload);
+            
+            // 2. Como o ESP envia 60 pontos (1 por minuto), vamos gerar os rótulos de tempo
+            // ex: "-59 min", "-58 min" ... "Agora"
+            const labels = parsedData.temp.map((_, index) => {
+               const minsAgo = parsedData.temp.length - 1 - index;
+               return minsAgo === 0 ? 'Agora' : `-${minsAgo}m`;
+            });
 
+            // 3. Injeta tudo de uma vez no gráfico! (Sobrescreve a matriz inteira)
+            setHistory({
+              timeLabels: labels,
+              tempData: parsedData.temp,
+              humData: parsedData.hum
+            });
+            
+          } catch (err) {
+            console.error("Erro ao decodificar o JSON do histórico:", err);
+          }
+          break;
         case `${PREFIX}status`:
+          console.log(`${PREFIX}status`)
           setEspStatus(payload.toUpperCase());
           break;
 
@@ -291,3 +316,8 @@ const btnStyle = (isOn) => ({
 });
 
 export default App;
+
+
+
+// {"temp":[24.2,25.2,25.5,25.5,24.3,24.0,25.9,25.3,25.3,24.3,25.3,24.3,24.7,25.8,25.5,25.6,25.7,25.9],"hum":[50.8,49.8,49.5,49.5,50.7,51.0,49.1,49.7,49.7,50.7,49.7,50.7,50.3,49.2,49.5,49.4,49.3,49.1]}
+// {"temp":[24.2,25.2,25.5,25.5,24.3,24.0,25.9,25.3,25.3,24.3,25.3,24.3,24.7,25.8,25.5,25.6,25.7,25.9,25.8],"hum":[50.8,49.8,49.5,49.5,50.7,51.0,49.1,49.7,49.7,50.7,49.7,50.7,50.3,49.2,49.5,49.4,49.3,49.1,49.2]}
