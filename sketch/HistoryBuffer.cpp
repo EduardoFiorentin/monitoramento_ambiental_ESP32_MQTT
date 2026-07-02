@@ -1,12 +1,11 @@
 #include "HistoryBuffer.h"
 
-// Construtor: INICIALIZAÇÃO OBRIGATÓRIA dos ponteiros de memória!
 HistoryBuffer::HistoryBuffer() {
   _head = 0;
   _tail = 0;
   _count = 0;
   
-  // Zera o buffer por segurança
+  // zera o buffer por segurança
   for (int i = 0; i < HISTORY_SIZE; i++) {
     _buffer[i].temperature = 0.0;
     _buffer[i].humidity = 0.0;
@@ -22,32 +21,30 @@ bool HistoryBuffer::isEmpty() {
 }
 
 void HistoryBuffer::enqueue(float temp, float hum) {
-  // Salva o dado na posição atual do Head
   _buffer[_head].temperature = temp;
   _buffer[_head].humidity = hum;
 
-  // Avança o Head de forma circular
+  // avança head do vetor
   _head = (_head + 1) % HISTORY_SIZE;
 
   if (!isFull()) {
     _count++; // Apenas cresce até atingir os 60
   } else {
-    // Se está cheio, o Head "atropelou" o Tail.
-    // Precisamos empurrar o Tail para a frente para esquecer o dado mais antigo.
+    // se está cheio, o head chegou no tail.
+    // empurramos o head para frente para acompanhar (descarta dado mais antigo).
     _tail = (_tail + 1) % HISTORY_SIZE;
   }
 }
 
-// O pulo do gato para o MQTT: Gera um JSON sem destruir os dados da memória
 String HistoryBuffer::getHistoryJSON() {
   if (isEmpty()) return "{\"temp\":[],\"hum\":[]}";
 
   String json = "{\"temp\":[";
   
-  // Iteração do mais antigo (Tail) até ao mais recente (Head)
+  // iteração de tail para head
   int currentIndex = _tail;
   for (int i = 0; i < _count; i++) {
-    json += String(_buffer[currentIndex].temperature, 1); // 1 casa decimal para poupar bytes na string
+    json += String(_buffer[currentIndex].temperature, 1);
     if (i < _count - 1) json += ",";
     
     currentIndex = (currentIndex + 1) % HISTORY_SIZE;
@@ -55,7 +52,7 @@ String HistoryBuffer::getHistoryJSON() {
   
   json += "],\"hum\":[";
   
-  currentIndex = _tail; // Reinicia a iteração para extrair a humidade
+  currentIndex = _tail;
   for (int i = 0; i < _count; i++) {
     json += String(_buffer[currentIndex].humidity, 1);
     if (i < _count - 1) json += ",";

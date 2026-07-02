@@ -52,7 +52,7 @@ void update_min_max();
 void update_lcd_messages();
 void envDataTransmissionCallback();
 void rssiTransmissionCallback();
-void onHistoryReadyToSendCallback();
+void onHistorySendCallback();
 
 // enums =============================================================
 // Atualizado para refletir o modo de rede
@@ -90,7 +90,7 @@ LCDStateEnum lcdState = SCREEN_1_TEMP_C;
 Timer 
   envDataTransmitionTimer (WIFI_DATA_TRANSMISSION_INTERVAL, envDataTransmissionCallback), 
   rssiTransmitionTimer    (WIFI_RSSI_TRANSMISSION_INTERVAL, rssiTransmissionCallback),
-  historyTimer            (HISTORY_SEND_INTERVAL, onHistoryReadyToSendCallback);
+  historyTimer            (HISTORY_SEND_INTERVAL, onHistorySendCallback);
 
 
 // Value variables ================================================================
@@ -149,9 +149,13 @@ void onDeviceDisconnectedCallback() {
   update_lcd_messages();
 }
 
-void onHistoryReadyToSendCallback() {
+void onHistorySendCallback() {
   Serial.println("[MQTT] Callback mandando historico");
   if (mqttController != nullptr) {
+    // salva o ponto do minuto atual
+    historyBuffer.enqueue(temp, hum);
+    
+    // envia últimos 60 pontos
     String payload = historyBuffer.getHistoryJSON();
     Serial.println(payload.c_str());
     mqttController->sendHistoryData(payload);
@@ -407,7 +411,7 @@ void update_io() {
 
 void update_dht_measures() {
   if (measure_environment(&temp, &hum)) {
-    historyBuffer.enqueue(temp, hum);     // TODO Ver onde fica melhor esta chamada
+    // historyBuffer.enqueue(temp, hum);     // TODO Ver onde fica melhor esta chamada
   }
   
 }
