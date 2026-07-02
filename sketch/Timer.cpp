@@ -34,6 +34,10 @@ void Timer::update() {
   }
 }
 
+void Timer::reset() {
+  _previousMillis = millis(); 
+}
+
 void Timer::setInterval(uint32_t intervalMillis) {
   _interval = intervalMillis;
 }

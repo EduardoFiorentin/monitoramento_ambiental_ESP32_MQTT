@@ -22,6 +22,7 @@ public:
   void start();   // inicia contador 
   void stop();    // para contador
   void update();  // deve ser chamado a cada loop
+  void reset();
 
 
   void setInterval(uint32_t intervalMillis);

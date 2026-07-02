@@ -18,6 +18,7 @@
 #define   WIFI_RSSI_TRANSMISSION_INTERVAL                 5000
 
 #define   HISTORY_SEND_INTERVAL                           60000
+#define   NEXT_LCD_SCREEN_TIME                            3000
 
 #define   PIN_BUTTON_1          26
 #define   PIN_BUTTON_2          27
@@ -53,11 +54,15 @@
 #define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
 // #define IS_WOKWI     // comentar para habilitar uso do wi-fi real
 
+
+// pré declarado apenas o necessário para usar nas callbacks
 void update_min_max();
 void update_lcd_messages();
 void envDataTransmissionCallback();
 void rssiTransmissionCallback();
 void onHistorySendCallback();
+void set_next_lcd_state();
+void update_lcd_messages();
 
 // enums =============================================================
 // Atualizado para refletir o modo de rede
@@ -93,9 +98,10 @@ SwitchPullDown
 LCDStateEnum lcdState = SCREEN_1_TEMP_C;
 
 Timer 
-  envDataTransmitionTimer (WIFI_DATA_TRANSMISSION_INTERVAL, envDataTransmissionCallback), 
-  rssiTransmitionTimer    (WIFI_RSSI_TRANSMISSION_INTERVAL, rssiTransmissionCallback),
-  historyTimer            (HISTORY_SEND_INTERVAL, onHistorySendCallback);
+  envDataTransmitionTimer     (WIFI_DATA_TRANSMISSION_INTERVAL, envDataTransmissionCallback), 
+  rssiTransmitionTimer        (WIFI_RSSI_TRANSMISSION_INTERVAL, rssiTransmissionCallback),
+  historyTimer                (HISTORY_SEND_INTERVAL, onHistorySendCallback),
+  autoUpdateLcdScreenTimer    (NEXT_LCD_SCREEN_TIME, onAutoUpdateLcdScreenCallback);
 
 
 // Value variables ================================================================
@@ -165,6 +171,11 @@ void onHistorySendCallback() {
     Serial.println(payload.c_str());
     mqttController->sendHistoryData(payload);
   }
+}
+
+void onAutoUpdateLcdScreenCallback() {
+  set_next_lcd_state();
+  update_lcd_messages();
 }
 
 
@@ -384,6 +395,7 @@ static bool measure_environment(float *temperature, float *humidity) {
 // STATES CONTROLL =================================================================
 void update_hardware_state() {
   if (btn1.wasPressed()) {
+    autoUpdateLcdScreenTimer.reset();   // garante que não passe a tela logo após a troca manual
     set_next_lcd_state();
     update_lcd_messages();
   }
@@ -478,6 +490,7 @@ void setup() {
   envDataTransmitionTimer.start();
   rssiTransmitionTimer.start();
   historyTimer.start();
+  autoUpdateLcdScreenTimer.start();
 
   setup_initial_hardware_state();
 }
@@ -497,4 +510,5 @@ void loop() {
   envDataTransmitionTimer.update();
   rssiTransmitionTimer.update();
   historyTimer.update();
+  autoUpdateLcdScreenTimer.update();
 }
