@@ -2,16 +2,27 @@ import { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import LineChart from './components/LineChart';
 
+const pass_local = import.meta.env.VITE_MQTT_PASS_LOCAL
+const pass_public = import.meta.env.VITE_MQTT_PASS_PUBLIC
+const user_public = import.meta.env.VITE_MQTT_USER_PUBLIC
 
-const MQTT_OPTIONS = {
-  host: "192.168.0.106",   // casa
-  // host: "10.89.235.1",      // g6
-  port: "9001",
+
+// const broker_url = import.meta.env.VITE_MQTT_URL_PUBLIC;
+// const mqtt_options = {
+//   username: user_public,
+//   password: pass_public,
+//   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8)
+// };
+
+
+const broker_url = import.meta.env.VITE_MQTT_URL_LOCAL;
+const mqtt_options = {
   username: 'admin',
-  password: 'admin',
+  password: pass_local,
   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8),
-  
 };
+
+
 const PREFIX = 'uffs/EduardoFioretin/dev/';
 
 const MAX_POINTS_AMBIENT = 30; // Aprox 2.5 minutos de histórico
@@ -58,7 +69,7 @@ function App() {
   useEffect(() => {
     if (clientRef.current) return; // Evita múltiplas ligações no Strict Mode do React
 
-    const client = mqtt.connect(MQTT_OPTIONS);
+    const client = mqtt.connect(broker_url, mqtt_options);
     clientRef.current = client;
 
     client.on('connect', () => {

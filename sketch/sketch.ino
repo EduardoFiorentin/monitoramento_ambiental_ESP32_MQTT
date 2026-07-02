@@ -8,6 +8,7 @@
 #include "SimpleLed.h"
 #include "env.h"
 #include "HistoryBuffer.h"
+#include "Certificate.h"
 
 #define   DHT_SENSOR_PIN    18
 #define   DHT_SENSOR_TYPE   DHT_TYPE_22
@@ -45,6 +46,10 @@
 
 #define CELSIUS_TO_FAHRENHEIT(c) (((c) * 9.0) / 5.0 + 32.0)
 
+
+// FLAGS DE FUNCIONAMENTO ===================================================
+
+#define PUBLIC_BROKER false
 #define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
 // #define IS_WOKWI     // comentar para habilitar uso do wi-fi real
 
@@ -178,17 +183,33 @@ void setup_min_max() {
 
 void setup_mqtt() {
   #ifndef IS_WOKWI
+  #if PUBLIC_BROKER
   MQTTConfig config = {
     WIFI_SSID,
     WIFI_PASS,
-    BROKER_ADDRS,
-    MQTT_PORT,
-    MQTT_USER_LOGIN,
-    MQTT_USER_PASS,
+    BROKER_ADDRS_PUBLIC,
+    MQTT_PORT_PUBLIC,
+    MQTT_USER_LOGIN_PUBLIC,
+    MQTT_USER_PASS_PUBLIC,
     MQTT_TOPIC_PREFIX,
-    MQTT_ESP_CLIENT_ID
+    MQTT_ESP_CLIENT_ID,
+    true,
+    hivemq_root_ca
   };
-
+  #else 
+  MQTTConfig config = {
+    WIFI_SSID,
+    WIFI_PASS,
+    BROKER_ADDRS_LOCAL,
+    MQTT_PORT_LOCAL,
+    MQTT_USER_LOGIN_LOCAL,
+    MQTT_USER_PASS_LOCAL,
+    MQTT_TOPIC_PREFIX,
+    MQTT_ESP_CLIENT_ID,
+    false,
+    nullptr
+  };
+  #endif
   mqttController = new MQTTController(config);
   
   if (mqttController != nullptr) {
@@ -290,21 +311,45 @@ void update_lcd_messages() {
     write_lcd_row_1(msgMaxHum);
     write_lcd_row_2(msgMinHum);
   }
+  // else if ( lcdState == SCREEN_5_NET) {
+  //   write_lcd_row_1(MSG_NET_STTS);
+  //   if (mqttController != nullptr) {
+  //     if (mqttController->isMQTTConnected()) {    // broker alcançado
+  //       write_lcd_row_2(MSG_NET_MQTT);
+  //     } 
+  //     else if (mqttController->isWiFiConnected()) { // rede wi-fi alcançada
+  //       write_lcd_row_2(MSG_NET_WIFI);
+  //     } 
+  //     else {
+  //       write_lcd_row_2(MSG_NET_OFF);   // tudo quebrado 
+  //     }
+  //   } 
+  //   else {
+  //     write_lcd_row_2(MSG_NET_NOT_STARTED);
+  //   }
+  // }
   else if ( lcdState == SCREEN_5_NET) {
-    write_lcd_row_1(MSG_NET_STTS);
     if (mqttController != nullptr) {
-      if (mqttController->isMQTTConnected()) {    // broker alcançado
-        write_lcd_row_2(MSG_NET_MQTT);
-      } 
-      else if (mqttController->isWiFiConnected()) { // rede wi-fi alcançada
-        write_lcd_row_2(MSG_NET_WIFI);
-      } 
-      else {
-        write_lcd_row_2(MSG_NET_OFF);   // tudo quebrado 
+      String row1 = "Wi-Fi:";
+      row1 += mqttController->isWiFiConnected() ? "ON  " : "OFF ";
+      row1 += "MQ:";
+      row1 += mqttController->isMQTTConnected() ? "ON " : "OFF";
+      
+      String row2 = "RSSI: ";
+      if (mqttController->isWiFiConnected()) {
+        row2 += String(WiFi.RSSI()) + " dBm";
+      } else {
+        row2 += "-- dBm";
       }
+
+      // 3. Escreve no ecrã
+      write_lcd_row_1(row1);
+      write_lcd_row_2(row2);
+      
     } 
     else {
-      write_lcd_row_2(MSG_NET_NOT_STARTED);
+      write_lcd_row_1("Erro Instancia");
+      write_lcd_row_2("");
     }
   }
 }

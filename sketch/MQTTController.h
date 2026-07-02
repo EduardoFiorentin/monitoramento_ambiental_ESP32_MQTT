@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <WiFiClientSecure.h>
 
 // Definição dos sufixos dos tópicos baseada na especificação
 #define TOPIC_SUFFIX_TEMP_C       "temperatura/celsius"
@@ -30,6 +31,8 @@ struct MQTTConfig {
   const char* mqttPassword;
   const char* topicPrefix;     // ex: "uffs/eduardo/"
   const char* clientId;        // ex: "ESP32_Eduardo"
+  bool        useTLS;
+  const char* rootCA;
 };
 
 typedef void (*LedsCommandCallback)(bool led1, bool led2, bool resetMinMax);
@@ -48,9 +51,10 @@ enum class EConnectionStatus {
 
 class MQTTController {
 private:
-  MQTTConfig      _config;
-  WiFiClient      _espClient;
-  PubSubClient    _mqttClient;
+  MQTTConfig          _config;
+  WiFiClient          _wifiClient;
+  WiFiClientSecure    _wifiClientSecure;
+  PubSubClient        _mqttClient;
 
   EConnectionStatus _connectionState = EConnectionStatus::DISCONNECTED;
   unsigned long   _lastReconnectAttempt = 0;

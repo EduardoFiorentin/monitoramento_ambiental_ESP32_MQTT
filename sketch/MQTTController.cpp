@@ -14,14 +14,26 @@ void MQTTController::begin() {
   
   // Configura o cliente MQTT
   _mqttClient.setBufferSize(MAX_PUB_BUFFER_SIZE);    // aumenta tamanho máximo do buffer de publicação
-  _mqttClient.setClient(_espClient);
+
+  // _mqttClient.setClient(_espClient);
+  if (_config.useTLS) {
+    if (_config.rootCA != nullptr) {
+      _wifiClientSecure.setCACert(_config.rootCA);
+    } else {
+      _wifiClientSecure.setInsecure();
+    }
+    _mqttClient.setClient(_wifiClientSecure);
+  } else {
+    _mqttClient.setClient(_wifiClient);
+  }
+
   _mqttClient.setServer(_config.mqttBroker, _config.mqttPort);
   _mqttClient.setCallback(MQTTController::_mqttCallbackWrapper);
   
   _connectionState = EConnectionStatus::DISCONNECTED;
   _lastReconnectAttempt = 0;
   
-  Serial.println("[MQTTController] Inicializado. Aguardando processamento da rede...");
+  Serial.println("[MQTTController] Inicializado e aguardando processamento da rede.");
 }
 
 void MQTTController::_buildTopics() {
