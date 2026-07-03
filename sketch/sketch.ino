@@ -51,8 +51,8 @@
 // FLAGS DE FUNCIONAMENTO ===================================================
 
 #define PUBLIC_BROKER false
-#define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
-// #define IS_WOKWI     // comentar para habilitar uso do wi-fi real
+// #define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
+// #define IS_WOKWI           // comentar para habilitar uso do wi-fi real
 
 
 // pré declarado apenas o necessário para usar nas callbacks
@@ -483,11 +483,18 @@ void update_min_max() {
 
 void setup() {
   Serial.begin(115200);
-  setup_lcd();
-  setup_mqtt();
   setup_io();
   setup_dht();
+
+  setup_lcd();
+  write_lcd_row_1("Iniciando sist...");
+  write_lcd_row_2("Aguarde...");
+  delay(1000);  
+  
+  setup_mqtt();
   update_lcd_messages();
+  
+  // inicia timers
   envDataTransmitionTimer.start();
   rssiTransmitionTimer.start();
   historyTimer.start();
