@@ -1,0 +1,8 @@
+# Regras para usuários anônimos (públicos)
+# Permite apenas LEITURA (read) em todos os tópicos (#)
+topic read #
+
+# Regras para usuários autenticados
+user admin
+# Permite LEITURA e ESCRITA (readwrite) em tudo
+topic readwrite #

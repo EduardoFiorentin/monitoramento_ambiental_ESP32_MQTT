@@ -63,6 +63,7 @@ void rssiTransmissionCallback();
 void onHistorySendCallback();
 void set_next_lcd_state();
 void update_lcd_messages();
+void onAutoUpdateLcdScreenCallback();
 
 // enums =============================================================
 // Atualizado para refletir o modo de rede
@@ -231,7 +232,7 @@ void setup_mqtt() {
     mqttController->begin();
   }
   #else 
-  Serial.println("[MQTT] Wokwi detectado - Wi-Fi e MQTT não iniciados")
+  Serial.println("[MQTT] Wokwi detectado - Wi-Fi e MQTT não iniciados");
   #endif 
 }
 
