@@ -50,7 +50,8 @@
 
 // FLAGS DE FUNCIONAMENTO ===================================================
 
-#define PUBLIC_BROKER false
+#define PUBLIC_BROKER   false
+#define IS_EDUROAM      false
 // #define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
 // #define IS_WOKWI           // comentar para habilitar uso do wi-fi real
 
@@ -197,7 +198,9 @@ void setup_mqtt() {
   #ifndef IS_WOKWI
   #if PUBLIC_BROKER
   MQTTConfig config = {
+    IS_EDUROAM,
     WIFI_SSID,
+    WIFI_USER,
     WIFI_PASS,
     BROKER_ADDRS_PUBLIC,
     MQTT_PORT_PUBLIC,
@@ -210,7 +213,9 @@ void setup_mqtt() {
   };
   #else 
   MQTTConfig config = {
+    IS_EDUROAM,
     WIFI_SSID,
+    WIFI_USER,
     WIFI_PASS,
     BROKER_ADDRS_LOCAL,
     MQTT_PORT_LOCAL,
@@ -235,6 +240,7 @@ void setup_mqtt() {
   Serial.println("[MQTT] Wokwi detectado - Wi-Fi e MQTT não iniciados");
   #endif 
 }
+
 
 void setup_dht() {
   #ifndef DHT_READ_MOCK

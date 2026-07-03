@@ -1,6 +1,5 @@
 #include "MQTTController.h"
 
-// Inicialização do ponteiro estático necessário para o callback da PubSubClient
 MQTTController* MQTTController::_instance = nullptr;
 
 MQTTController::MQTTController(MQTTConfig config) : _config(config) {
@@ -12,10 +11,12 @@ void MQTTController::begin() {
   
   WiFi.mode(WIFI_STA);
   
-  // Configura o cliente MQTT
-  _mqttClient.setBufferSize(MAX_PUB_BUFFER_SIZE);    // aumenta tamanho máximo do buffer de publicação
+  _mqttClient.setBufferSize(MAX_PUB_BUFFER_SIZE);    
 
-  // _mqttClient.setClient(_espClient);
+  _wifiClient.setTimeout(3);
+  _wifiClientSecure.setTimeout(3);
+  _wifiClientSecure.setHandshakeTimeout(3); // TLS
+
   if (_config.useTLS) {
     if (_config.rootCA != nullptr) {
       _wifiClientSecure.setCACert(_config.rootCA);
@@ -58,8 +59,26 @@ void MQTTController::update() {
     case EConnectionStatus::DISCONNECTED:
       if (millis() - _lastReconnectAttempt >= _reconnectInterval || _lastReconnectAttempt == 0) {
         _lastReconnectAttempt = millis();
-        Serial.printf("[Wi-Fi] Tentando conectar ao SSID: %s...\n", _config.wifiSSID);
-        WiFi.begin(_config.wifiSSID, _config.wifiPassword);
+        
+        Serial.printf("\n[Wi-Fi] Tentando conectar ao SSID: %s...\n", _config.wifiSSID);
+        
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_STA);
+        
+        if (_config.isEduroam) {
+          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Enterprise (Universidade)");
+
+          esp_eap_client_set_identity((uint8_t *)_config.wifiUser, strlen(_config.wifiUser));
+          esp_eap_client_set_username((uint8_t *)_config.wifiUser, strlen(_config.wifiUser));
+          esp_eap_client_set_password((uint8_t *)_config.wifiPassword, strlen(_config.wifiPassword));
+          esp_wifi_sta_enterprise_enable();
+          
+          WiFi.begin(_config.wifiSSID); 
+        } else {
+          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Personal (Doméstico)");
+          WiFi.begin(_config.wifiSSID, _config.wifiPassword);
+        }
+        
         _connectionState = EConnectionStatus::WIFI_CONNECTING;
       }
       break;
@@ -70,7 +89,6 @@ void MQTTController::update() {
         Serial.println(WiFi.localIP());
         _connectionState = EConnectionStatus::WIFI_CONNECTED;
       } 
-      // Timeout de 10 segundos para não ficar preso na tentativa de Wi-Fi
       else if (millis() - _lastReconnectAttempt > 10000) {
         Serial.println("[Wi-Fi] Falha na conexão. Reiniciando ciclo.");
         WiFi.disconnect();
@@ -81,53 +99,54 @@ void MQTTController::update() {
 
     case EConnectionStatus::WIFI_CONNECTED:
       _connectionState = EConnectionStatus::BROKER_CONNECTING;
-      _lastReconnectAttempt = 0; // Força a tentativa imediata do MQTT
+      _lastReconnectAttempt = 0; 
       break;
 
     case EConnectionStatus::BROKER_CONNECTING:
-      if (WiFi.status() != WL_CONNECTED) {
-        _connectionState = EConnectionStatus::DISCONNECTED;
-        break;
-      }
-      
-      if (millis() - _lastReconnectAttempt >= _reconnectInterval || _lastReconnectAttempt == 0) {
-        _lastReconnectAttempt = millis();
+      // Intervalo de segurança antes de tentar novamente (Ex: 5000ms)
+      if (millis() - _lastReconnectAttempt >= _reconnectInterval) {
+        
         Serial.printf("[MQTT] Conectando ao Broker %s:%d...\n", _config.mqttBroker, _config.mqttPort);
         
-        // Conexão com LWT (Last Will and Testament)
-        // Se o ESP32 cair, o broker avisa o dashboard publicando "offline" retido
-        bool connected = _mqttClient.connect(
-          _config.clientId, 
-          _config.mqttUser, 
-          _config.mqttPassword, 
-          _topicStatus.c_str(), 
-          1,    // QoS 
-          true, // Retain 
-          "offline" // Payload do Testamento
-        );
+        // --- INÍCIO DA ZONA BLOQUEANTE ---
+        bool success;
+        if (_config.mqttUser != nullptr && strlen(_config.mqttUser) > 0) {
+          success = _mqttClient.connect(_config.clientId, _config.mqttUser, _config.mqttPassword, 
+                                        _topicStatus.c_str(), 1, true, "offline");
+        } else {
+          success = _mqttClient.connect(_config.clientId, 
+                                        _topicStatus.c_str(), 1, true, "offline");
+        }
+        // --- FIM DA ZONA BLOQUEANTE ---
 
-        if (connected) {
+        if (success) {
           Serial.println("[MQTT] Conectado com sucesso!");
-          _connectionState = EConnectionStatus::BROKER_CONNECTED;
           
           // Publica status online retido
           _mqttClient.publish(_topicStatus.c_str(), "online", true);
-
-          // Assina os tópicos de controle vindos do Dashboard
+          
+          // =================================================================
+          // CORREÇÃO: Assina os tópicos de controle usando as suas variáveis
+          // =================================================================
           _mqttClient.subscribe(_topicLedsCmd.c_str());
           _mqttClient.subscribe(_topicRgbCmd.c_str());
           _mqttClient.subscribe(_topicResetCmd.c_str());
-
+          
+          _connectionState = EConnectionStatus::BROKER_CONNECTED;
           if (_onClientConnectCallback) _onClientConnectCallback();
         } else {
-          Serial.print("[MQTT] Falha na conexão. Código de erro (rc): ");
-          Serial.println(_mqttClient.state());
+          Serial.printf("[MQTT] Falha na conexão. Código de erro (rc): %d\n", _mqttClient.state());
+          // Se der erro, ele continua em BROKER_CONNECTING para tentar de novo na próxima.
         }
+
+        // ===================================================================================
+        // Carimba o tempo APÓS a tentativa para evitar a armadilha temporal
+        // ===================================================================================
+        _lastReconnectAttempt = millis(); 
       }
       break;
 
     case EConnectionStatus::BROKER_CONNECTED:
-      // Se a internet cair por trás do roteador ou o cabo for puxado
       if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[Rede] Conexão Wi-Fi perdida!");
         _connectionState = EConnectionStatus::DISCONNECTED;
@@ -135,7 +154,6 @@ void MQTTController::update() {
         break;
       }
       
-      // Se o broker cair ou desconectar o cliente
       if (!_mqttClient.connected()) {
         Serial.println("[MQTT] Conexão com o broker perdida!");
         _connectionState = EConnectionStatus::BROKER_CONNECTING;
@@ -143,20 +161,15 @@ void MQTTController::update() {
         break;
       }
       
-      // Mantém a recepção de mensagens ativa
       _mqttClient.loop();
       break;
   }
 }
 
-// Wrapper estático que repassa a chamada do C puro para a nossa instância C++
 void MQTTController::_mqttCallbackWrapper(char* topic, byte* payload, unsigned int length) {
   if (_instance) {
     String topicStr(topic);
-    String payloadStr;
-    for (unsigned int i = 0; i < length; i++) {
-      payloadStr += (char)payload[i];
-    }
+    String payloadStr((char*)payload, length);
     _instance->_processIncomingMessage(topicStr, payloadStr);
   }
 }
@@ -164,12 +177,10 @@ void MQTTController::_mqttCallbackWrapper(char* topic, byte* payload, unsigned i
 void MQTTController::_processIncomingMessage(String topic, String payload) {
   Serial.printf("[Comando MQTT] Tópico: %s | Payload: %s\n", topic.c_str(), payload.c_str());
 
-  // Mantemos o estado interno para evitar que um comando zere o estado do outro na sketch.ino
   static bool lastLed1 = false;
   static bool lastLed2 = false;
 
   if (topic == _topicLedsCmd) {
-    // Espera formato "1,0" (Led 1 On, Led 2 Off)
     int commaIndex = payload.indexOf(',');
     if (commaIndex > 0) {
       lastLed1 = (payload.substring(0, commaIndex).toInt() > 0);
@@ -179,7 +190,6 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
   } 
   
   else if (topic == _topicResetCmd) {
-    // Comando para resetar Mínimos e Máximos (mantém o estado dos LEDs)
     if (_onLedsCommand) {
       bool triggerReset = (payload.toInt() > 0);
       if (triggerReset) {
@@ -189,7 +199,6 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
   } 
   
   else if (topic == _topicRgbCmd) {
-    // Espera formato "R,G,B" (Ex: 255,0,0)
     int firstComma = payload.indexOf(',');
     int secondComma = payload.indexOf(',', firstComma + 1);
     
@@ -202,8 +211,6 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
     }
   }
 }
-
-// Métodos de publcação ======================================================
 
 void MQTTController::sendAmbientData(float temperature, float humidity) {
   if (_connectionState == EConnectionStatus::BROKER_CONNECTED) {
@@ -227,7 +234,6 @@ void MQTTController::sendHistoryData(String jsonPayload) {
 
 void MQTTController::sendConfigData(bool lockSimpleLeds, bool measure) {
   if (_connectionState == EConnectionStatus::BROKER_CONNECTED) {
-    // 1 para bloqueado localmente, 0 para controle via web liberado
     _mqttClient.publish(_topicLockState.c_str(), lockSimpleLeds ? "1" : "0");
     _registerPublish();
   }
@@ -235,7 +241,6 @@ void MQTTController::sendConfigData(bool lockSimpleLeds, bool measure) {
 
 void MQTTController::sendLocalLedsState(bool led1, bool led2, bool resetMinMax) {
   if (_connectionState == EConnectionStatus::BROKER_CONNECTED) {
-    // Envia o estado atualizado para refletir graficamente no Dashboard
     String stateStr = String(led1 ? 1 : 0) + "," + String(led2 ? 1 : 0);
     _mqttClient.publish(_topicLedsState.c_str(), stateStr.c_str());
     _registerPublish();
@@ -250,23 +255,17 @@ void MQTTController::sendRssi() {
   }
 }
 
-
-// ======== CONTROLE DE JANELA DE MENSAGENS (GRAFICO/LCD) ========
-
 void MQTTController::_registerPublish() {
   _publishBuckets[_currentBucketIndex]++;
 }
 
 void MQTTController::_updatePublishWindow() {
-  // Gira o vetor a cada 1 segundo exato
   if (millis() - _lastBucketShiftTime >= 1000) {
     _lastBucketShiftTime = millis();
     _currentBucketIndex = (_currentBucketIndex + 1) % 60;
     _publishBuckets[_currentBucketIndex] = 0; 
   }
 }
-
-// ======== GETTERS E SETTERS ========
 
 bool MQTTController::isWiFiConnected() {
   return _connectionState >= EConnectionStatus::WIFI_CONNECTED;
