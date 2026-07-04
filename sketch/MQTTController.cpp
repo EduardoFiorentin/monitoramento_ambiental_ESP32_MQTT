@@ -51,6 +51,7 @@ void MQTTController::_buildTopics() {
   _topicLockState   = prefix + TOPIC_SUFFIX_LOCK_STATE;
   _topicResetCmd    = prefix + TOPIC_SUFFIX_RESET_CMD;
   _topicDashStatus  = prefix + TOPIC_SUFFIX_DASH_STATUS;
+  _topicUnitState   = prefix + TOPIC_SUFFIX_UNIT_STATE;
 }
 
 void MQTTController::update() {
@@ -67,7 +68,7 @@ void MQTTController::update() {
         WiFi.mode(WIFI_STA);
         
         if (_config.isEduroam) {
-          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Enterprise (Universidade)");
+          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Enterprise - universidade");
 
           esp_eap_client_set_identity((uint8_t *)_config.wifiUser, strlen(_config.wifiUser));
           esp_eap_client_set_username((uint8_t *)_config.wifiUser, strlen(_config.wifiUser));
@@ -76,7 +77,7 @@ void MQTTController::update() {
           
           WiFi.begin(_config.wifiSSID); 
         } else {
-          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Personal (Doméstico)");
+          Serial.println("[Wi-Fi] Modo Ativo: WPA2-Personal - doméstico");
           WiFi.begin(_config.wifiSSID, _config.wifiPassword);
         }
         
@@ -203,6 +204,8 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
       if (_onRgbCommand) _onRgbCommand(r, g, b);
     }
   }
+
+  
   else if (topic == _topicDashStatus) {
     if (payload == "online") {
       Serial.println("[Sistema] Dashboard Web Conectado!");
@@ -238,6 +241,7 @@ void MQTTController::sendHistoryData(String jsonPayload) {
 void MQTTController::sendConfigData(bool lockSimpleLeds, bool measure) {
   if (_connectionState == EConnectionStatus::BROKER_CONNECTED) {
     _mqttClient.publish(_topicLockState.c_str(), lockSimpleLeds ? "1" : "0");
+    _mqttClient.publish(_topicUnitState.c_str(), measure ? "1" : "0");
     _registerPublish();
   }
 }

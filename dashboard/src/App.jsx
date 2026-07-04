@@ -9,6 +9,8 @@ const pass_public = import.meta.env.VITE_MQTT_PASS_PUBLIC
 const user_public = import.meta.env.VITE_MQTT_USER_PUBLIC
 
 
+// conexão para broker publico
+
 const broker_url = import.meta.env.VITE_MQTT_URL_PUBLIC;
 const mqtt_options = {
   username: user_public,
@@ -22,6 +24,8 @@ will: {
   }
 };
 
+
+// conexão para broker local
 
 // const broker_url = import.meta.env.VITE_MQTT_URL_LOCAL;
 // const mqtt_options = {
@@ -38,8 +42,8 @@ will: {
 
 
 
-const MAX_POINTS_AMBIENT = 30; // Aprox 2.5 minutos de histórico
-const MAX_POINTS_RSSI = 15;    // Aprox 75 segundos de histórico (cobre a exigência de 60s)
+const MAX_POINTS_AMBIENT = 30;
+const MAX_POINTS_RSSI = 15;
 
 function App() {
   const clientRef = useRef(null);
@@ -48,13 +52,14 @@ function App() {
   const [espStatus, setEspStatus] = useState('Aguardando...');
   const [msgTimestamps, setMsgTimestamps] = useState([]);
   
-  const [telemetry, setTelemetry] = useState({ temp: '--', hum: '--', rssi: '--' });
+  const [telemetry, setTelemetry] = useState({ temp: '--', tempF: '--', hum: '--', rssi: '--' })
   
+  const [displayUnit, setDisplayUnit] = useState('C');
   const [isLocked, setIsLocked] = useState(false);
   const [leds, setLeds] = useState({ led1: false, led2: false });
   const [rgbColor, setRgbColor] = useState('#000000');
 
-  // --- Estados dos Gráficos (Histórico) ---
+  // estados dos graficos 
   const [history, setHistory] = useState({
     timeLabels: [],
     tempData: [],
@@ -66,21 +71,20 @@ function App() {
   });
 
 
+  // controle da quantidade de mensagens 
+  // varredura e filtro a cada 1s
   useEffect(() => {
-    // Este temporizador roda a cada 1 segundo para varrer a memória
     const timer = setInterval(() => {
-      const timeLimit = Date.now() - 60000; // Define a "linha de corte" (60s atrás)
-      
-      // Mantém apenas os timestamps que são mais recentes que a linha de corte
+      const timeLimit = Date.now() - 60000;
       setMsgTimestamps(prev => prev.filter(timestamp => timestamp > timeLimit));
     }, 1000);
     
     return () => clearInterval(timer);
   }, []);
 
-  // ================= EFEITO DE LIGAÇÃO MQTT =================
+  // ligação e controle - mqtt
   useEffect(() => {
-    if (clientRef.current) return; // Evita múltiplas ligações no Strict Mode do React
+    if (clientRef.current) return;
 
     const client = mqtt.connect(broker_url, mqtt_options);
     clientRef.current = client;
@@ -101,19 +105,18 @@ function App() {
       switch (topic) {
         case `${PREFIX}temperatura/celsius`:
           setTelemetry(prev => ({ ...prev, temp: payload }));
-          // setHistory(prev => {
-          //   const newLabels = [...prev.timeLabels, now].slice(-MAX_POINTS_AMBIENT);
-          //   const newTemp = [...prev.tempData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
-          //   return { ...prev, timeLabels: newLabels, tempData: newTemp };
-          // });
           break;
           
         case `${PREFIX}umidade`:
           setTelemetry(prev => ({ ...prev, hum: payload }));
-          // setHistory(prev => {
-          //   const newHum = [...prev.humData, parseFloat(payload)].slice(-MAX_POINTS_AMBIENT);
-          //   return { ...prev, humData: newHum };
-          // });
+          break;
+
+        case `${PREFIX}temperatura/fahrenheit`:
+          setTelemetry(prev => ({ ...prev, tempF: parseFloat(payload).toFixed(1) }));
+          break;
+
+        case `${PREFIX}controle/unidade`:
+          setDisplayUnit(payload === '1' ? 'F' : 'C');
           break;
           
         case `${PREFIX}rssi`:
@@ -127,17 +130,12 @@ function App() {
         
         case `${PREFIX}historico`:
           try {
-            // 1. Transforma o texto que chegou do ESP32 num objeto Javascript de verdade
             const parsedData = JSON.parse(payload);
-            
-            // 2. Como o ESP envia 60 pontos (1 por minuto), vamos gerar os rótulos de tempo
-            // ex: "-59 min", "-58 min" ... "Agora"
             const labels = parsedData.temp.map((_, index) => {
-               const minsAgo = parsedData.temp.length - 1 - index;
-               return minsAgo === 0 ? 'Agora' : `-${minsAgo}m`;
+              const minsAgo = parsedData.temp.length - 1 - index;
+              return minsAgo === 0 ? 'Agora' : `-${minsAgo}m`;
             });
 
-            // 3. Injeta tudo de uma vez no gráfico! (Sobrescreve a matriz inteira)
             setHistory({
               timeLabels: labels,
               tempData: parsedData.temp,
@@ -180,7 +178,7 @@ function App() {
     };
   }, []);
 
-  // ================= FUNÇÕES DE COMANDO =================
+  // funções de comando dos atuadores   ==============================
   const toggleLed = (ledNumber) => {
     if (isLocked) {
       alert('Controle físico bloqueado pela chave SW1 no ESP32.');
@@ -215,12 +213,12 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' }}>
-      <h1 style={{ textAlign: 'center', color: '#333' }}>Monitoramento Ambiental UFFS</h1>
+      <h1 style={{ textAlign: 'center', color: '#333' }}>Monitoramento Ambiental</h1>
 
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '30px' }}>
         
         <div style={cardStyle}>
-          <h3 style={cardHeaderStyle}>⚙️ Status do Sistema</h3>
+          <h3 style={cardHeaderStyle}>Status do Sistema</h3>
           <p>Broker MQTT: <strong style={{ color: brokerStatus === 'Conectado' ? '#2ecc71' : '#e74c3c' }}>{brokerStatus}</strong></p>
           <p>ESP32 (LWT): <strong style={{ color: espStatus === 'ONLINE' ? '#2ecc71' : '#e74c3c' }}>{espStatus}</strong></p>
           <p>Modo de Controle: <strong>{isLocked ? '🔒 Bloqueado (Local)' : '🔓 Liberado'}</strong></p>
@@ -228,14 +226,14 @@ function App() {
         </div>
 
         <div style={cardStyle}>
-          <h3 style={cardHeaderStyle}>📊 Sensores (Live)</h3>
-          <p>🌡️ Temperatura: <strong>{telemetry.temp} °C</strong></p>
-          <p>💧 Umidade: <strong>{telemetry.hum} %</strong></p>
-          <p>📡 Sinal Wi-Fi: <strong>{telemetry.rssi} dBm</strong></p>
+          <h3 style={cardHeaderStyle}>Sensores</h3>
+          <p>Temperatura: <strong>{telemetry.temp} °C | {telemetry.tempF} °F</strong></p>
+          <p>Umidade: <strong>{telemetry.hum} %</strong></p>
+          <p>Sinal Wi-Fi: <strong>{telemetry.rssi} dBm</strong></p>
         </div>
 
         <div style={cardStyle}>
-          <h3 style={cardHeaderStyle}>🕹️ Painel de Controle</h3>
+          <h3 style={cardHeaderStyle}>Painel de Controle</h3>
           
           <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
             <button disabled={isLocked} onClick={() => toggleLed(1)} style={btnStyle(leds.led1)}>
@@ -252,23 +250,25 @@ function App() {
           </div>
 
           <button onClick={sendReset} style={{ ...btnStyle(false), backgroundColor: '#e74c3c', color: 'white', width: '100%' }}>
-            🔄 Resetar Histórico LCD
+            Resetar Histórico LCD
           </button>
         </div>
 
       </div>
 
       <h2 style={{ textAlign: 'center', color: '#333', marginTop: '40px' }}>Histórico de Telemetria</h2>
-      
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', justifyContent: 'center' }}>
         
         <div style={chartContainerStyle}>
           <LineChart 
-            title="Temperatura (°C)" 
+            title={`Temperatura (°${displayUnit})`}
             label="Graus Celsius" 
             color="#e74c3c" 
             labels={history.timeLabels} 
-            data={history.tempData} 
+            data={displayUnit === 'C' 
+              ? history.tempData 
+              : history.tempData.map(c => (c * 1.8 + 32).toFixed(1))
+            }
           />
         </div>
 
@@ -341,8 +341,3 @@ const btnStyle = (isOn) => ({
 });
 
 export default App;
-
-
-
-// {"temp":[24.2,25.2,25.5,25.5,24.3,24.0,25.9,25.3,25.3,24.3,25.3,24.3,24.7,25.8,25.5,25.6,25.7,25.9],"hum":[50.8,49.8,49.5,49.5,50.7,51.0,49.1,49.7,49.7,50.7,49.7,50.7,50.3,49.2,49.5,49.4,49.3,49.1]}
-// {"temp":[24.2,25.2,25.5,25.5,24.3,24.0,25.9,25.3,25.3,24.3,25.3,24.3,24.7,25.8,25.5,25.6,25.7,25.9,25.8],"hum":[50.8,49.8,49.5,49.5,50.7,51.0,49.1,49.7,49.7,50.7,49.7,50.7,50.3,49.2,49.5,49.4,49.3,49.1,49.2]}

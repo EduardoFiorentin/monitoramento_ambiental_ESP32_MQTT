@@ -32,11 +32,11 @@ export default function LineChart({ title, label, color, labels, data }) {
   };
 
   const chartData = {
-    labels: labels, // eixo x (horários)
+    labels: labels,
     datasets: [
       {
         label: label,
-        data: data, // eixo y (valores)
+        data: data,
         borderColor: color,
         backgroundColor: color,
         tension: 0.3,
