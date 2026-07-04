@@ -18,6 +18,7 @@
 #define TOPIC_SUFFIX_RGB_CMD      "rgb/comando"
 #define TOPIC_SUFFIX_LOCK_STATE   "controle/bloqueio"
 #define TOPIC_SUFFIX_RESET_CMD    "controle/reset"
+#define TOPIC_SUFFIX_DASH_STATUS  "dashboard/status"
 
 #define MAX_PUB_BUFFER_SIZE       1024
 
@@ -62,6 +63,7 @@ private:
 
   String _topicTempC, _topicTempF, _topicHum, _topicHist, _topicRssi, _topicStatus;
   String _topicLedsState, _topicLedsCmd, _topicRgbCmd, _topicLockState, _topicResetCmd;
+  String _topicDashStatus;
 
   uint16_t        _publishBuckets[60] = {0}; 
   uint8_t         _currentBucketIndex = 0;               

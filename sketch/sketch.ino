@@ -50,7 +50,7 @@
 
 // FLAGS DE FUNCIONAMENTO ===================================================
 
-#define PUBLIC_BROKER   false
+#define PUBLIC_BROKER   true
 #define IS_EDUROAM      false
 // #define DHT_READ_MOCK   // comentar para uso do sensor real nas leituras 
 // #define IS_WOKWI           // comentar para habilitar uso do wi-fi real

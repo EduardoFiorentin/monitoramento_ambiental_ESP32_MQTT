@@ -13,9 +13,9 @@ void MQTTController::begin() {
   
   _mqttClient.setBufferSize(MAX_PUB_BUFFER_SIZE);    
 
-  _wifiClient.setTimeout(3);
-  _wifiClientSecure.setTimeout(3);
-  _wifiClientSecure.setHandshakeTimeout(3); // TLS
+  _wifiClient.setTimeout(10);
+  _wifiClientSecure.setTimeout(10);
+  _wifiClientSecure.setHandshakeTimeout(10); // TLS
 
   if (_config.useTLS) {
     if (_config.rootCA != nullptr) {
@@ -50,6 +50,7 @@ void MQTTController::_buildTopics() {
   _topicRgbCmd      = prefix + TOPIC_SUFFIX_RGB_CMD;
   _topicLockState   = prefix + TOPIC_SUFFIX_LOCK_STATE;
   _topicResetCmd    = prefix + TOPIC_SUFFIX_RESET_CMD;
+  _topicDashStatus  = prefix + TOPIC_SUFFIX_DASH_STATUS;
 }
 
 void MQTTController::update() {
@@ -103,45 +104,37 @@ void MQTTController::update() {
       break;
 
     case EConnectionStatus::BROKER_CONNECTING:
-      // Intervalo de segurança antes de tentar novamente (Ex: 5000ms)
+      // intervalo antes de tentar novamente 
       if (millis() - _lastReconnectAttempt >= _reconnectInterval) {
         
         Serial.printf("[MQTT] Conectando ao Broker %s:%d...\n", _config.mqttBroker, _config.mqttPort);
         
-        // --- INÍCIO DA ZONA BLOQUEANTE ---
+        // zona bloqueante =========================================
         bool success;
         if (_config.mqttUser != nullptr && strlen(_config.mqttUser) > 0) {
           success = _mqttClient.connect(_config.clientId, _config.mqttUser, _config.mqttPassword, 
-                                        _topicStatus.c_str(), 1, true, "offline");
+            _topicStatus.c_str(), 1, true, "offline");
         } else {
           success = _mqttClient.connect(_config.clientId, 
-                                        _topicStatus.c_str(), 1, true, "offline");
+            _topicStatus.c_str(), 1, true, "offline");
         }
-        // --- FIM DA ZONA BLOQUEANTE ---
+        // ===================================================== fim zona blq
 
         if (success) {
           Serial.println("[MQTT] Conectado com sucesso!");
           
-          // Publica status online retido
+          // Assinatura de topicos de controle
           _mqttClient.publish(_topicStatus.c_str(), "online", true);
-          
-          // =================================================================
-          // CORREÇÃO: Assina os tópicos de controle usando as suas variáveis
-          // =================================================================
           _mqttClient.subscribe(_topicLedsCmd.c_str());
           _mqttClient.subscribe(_topicRgbCmd.c_str());
           _mqttClient.subscribe(_topicResetCmd.c_str());
+          _mqttClient.subscribe(_topicDashStatus.c_str());
           
           _connectionState = EConnectionStatus::BROKER_CONNECTED;
-          if (_onClientConnectCallback) _onClientConnectCallback();
+
         } else {
           Serial.printf("[MQTT] Falha na conexão. Código de erro (rc): %d\n", _mqttClient.state());
-          // Se der erro, ele continua em BROKER_CONNECTING para tentar de novo na próxima.
         }
-
-        // ===================================================================================
-        // Carimba o tempo APÓS a tentativa para evitar a armadilha temporal
-        // ===================================================================================
         _lastReconnectAttempt = millis(); 
       }
       break;
@@ -208,6 +201,16 @@ void MQTTController::_processIncomingMessage(String topic, String payload) {
       uint8_t b = payload.substring(secondComma + 1).toInt();
       
       if (_onRgbCommand) _onRgbCommand(r, g, b);
+    }
+  }
+  else if (topic == _topicDashStatus) {
+    if (payload == "online") {
+      Serial.println("[Sistema] Dashboard Web Conectado!");
+      if (_onClientConnectCallback) _onClientConnectCallback();
+    } 
+    else if (payload == "offline") {
+      Serial.println("[Sistema] Dashboard Web Desconectado!");
+      if (_onClientDisconnectCallback) _onClientDisconnectCallback();
     }
   }
 }
@@ -278,6 +281,8 @@ bool MQTTController::isMQTTConnected() {
 EConnectionStatus MQTTController::getState() {
   return _connectionState;
 }
+
+// setters de callback ================================================
 
 void MQTTController::setLedsCallback(LedsCommandCallback cb) {
   _onLedsCommand = cb;

@@ -31,7 +31,7 @@ void HistoryBuffer::enqueue(float temp, float hum) {
     _count++; // Apenas cresce até atingir os 60
   } else {
     // se está cheio, o head chegou no tail.
-    // empurramos o head para frente para acompanhar (descarta dado mais antigo).
+    // empurra o head para frente para acompanhar (descarta dado mais antigo).
     _tail = (_tail + 1) % HISTORY_SIZE;
   }
 }

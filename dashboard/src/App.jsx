@@ -2,28 +2,41 @@ import { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import LineChart from './components/LineChart';
 
+const PREFIX = 'uffs/EduardoFioretin/dev/';
+
 const pass_local = import.meta.env.VITE_MQTT_PASS_LOCAL
 const pass_public = import.meta.env.VITE_MQTT_PASS_PUBLIC
 const user_public = import.meta.env.VITE_MQTT_USER_PUBLIC
 
 
-// const broker_url = import.meta.env.VITE_MQTT_URL_PUBLIC;
-// const mqtt_options = {
-//   username: user_public,
-//   password: pass_public,
-//   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8)
-// };
-
-
-const broker_url = import.meta.env.VITE_MQTT_URL_LOCAL;
+const broker_url = import.meta.env.VITE_MQTT_URL_PUBLIC;
 const mqtt_options = {
-  username: 'admin',
-  password: pass_local,
+  username: user_public,
+  password: pass_public,
   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8),
+will: {
+    topic: `${PREFIX}dashboard/status`,
+    payload: 'offline',
+    qos: 1,
+    retain: true
+  }
 };
 
 
-const PREFIX = 'uffs/EduardoFioretin/dev/';
+// const broker_url = import.meta.env.VITE_MQTT_URL_LOCAL;
+// const mqtt_options = {
+//   username: 'admin',
+//   password: pass_local,
+//   clientId: 'ReactDash_' + Math.random().toString(16).substr(2, 8),
+//   will: {
+//     topic: `${PREFIX}dashboard/status`,
+//     payload: 'offline',
+//     qos: 1,
+//     retain: true
+//   }
+// };
+
+
 
 const MAX_POINTS_AMBIENT = 30; // Aprox 2.5 minutos de histórico
 const MAX_POINTS_RSSI = 15;    // Aprox 75 segundos de histórico (cobre a exigência de 60s)
@@ -74,7 +87,8 @@ function App() {
 
     client.on('connect', () => {
       setBrokerStatus('Conectado');
-      client.subscribe(`${PREFIX}#`); // Ouve todos os tópicos do projeto
+      client.subscribe(`${PREFIX}#`); 
+      client.publish(`${PREFIX}dashboard/status`, 'online', { qos: 1, retain: true });
     });
 
     client.on('message', (topic, message) => {
