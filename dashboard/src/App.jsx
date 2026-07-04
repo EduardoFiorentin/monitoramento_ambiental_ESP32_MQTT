@@ -221,7 +221,7 @@ function App() {
           <h3 style={cardHeaderStyle}>Status do Sistema</h3>
           <p>Broker MQTT: <strong style={{ color: brokerStatus === 'Conectado' ? '#2ecc71' : '#e74c3c' }}>{brokerStatus}</strong></p>
           <p>ESP32 (LWT): <strong style={{ color: espStatus === 'ONLINE' ? '#2ecc71' : '#e74c3c' }}>{espStatus}</strong></p>
-          <p>Modo de Controle: <strong>{isLocked ? '🔒 Bloqueado (Local)' : '🔓 Liberado'}</strong></p>
+          <p>Modo de Controle: <strong>{isLocked ? 'Bloqueado (Local)' : 'Liberado'}</strong></p>
           <p>Notificações (últimos 60s): <strong style={{ color: '#3498db', fontSize: '1.2em' }}>{msgTimestamps.length}</strong></p>
         </div>
 
